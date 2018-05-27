@@ -1,6 +1,7 @@
 import pandas as pd
 import os
 import re
+import numpy as np
 from datetime import datetime, timedelta
 
 # ---------------------- Constants -----------------
@@ -76,6 +77,12 @@ def hourly_process_one_record(record):
 
     if start.year < 2017:
         return []
+
+    if start.year == 2018 and start.month >= 3:
+        return []
+
+    if end.year == 2018 and end.month >= 3:
+        return []
     
     if gap.seconds <= 0:
         return []
@@ -102,7 +109,7 @@ def hourly_process_one_record(record):
 
 def hourly_process(records):
     result = []
-    for i in records.index:
+    for i in range(len(records)):
         result.extend(hourly_process_one_record(records.iloc[i]))
 
     result = pd.DataFrame(data = result, columns = ['year', 'month', 'day', 'hour', 'power'])
@@ -114,11 +121,7 @@ def hourly_process(records):
     result = result.groupby(['year', 'month', 'day']).filter(lambda x : x['hour'].count() > MIN_RECORDS_IN_DAY)
     return result
 
-def itera():
-    for name, group in results.groupby(['year', 'month', 'day']):
-        print(name)
-        print(group)
 
-records = read_records()
-
-results = hourly_process(records)
+if __name__ == "__main__":
+    records = read_records()
+    results = hourly_process(records)
