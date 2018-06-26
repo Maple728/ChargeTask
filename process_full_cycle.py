@@ -38,7 +38,7 @@ w2_in = tf.Variable(tf.truncated_normal([w1_size, 1]))
 b2_in = tf.Variable(tf.constant(0.1, shape = [1], dtype = tf.float32))
  
 
-y_pre = tf.matmul(X_, w1_in) + b1_in
+y_pre = tf.nn.relu(tf.matmul(X_, w1_in) + b1_in)
 y_pre = tf.matmul(y_pre, w2_in) + b2_in
 
 loss_func = tf.losses.mean_squared_error(y, y_pre)
@@ -50,8 +50,8 @@ records = pd.read_csv(data_path)
 scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform( records['power'].reshape((-1,1))).reshape((-1))
     
-train_records = records.iloc[: len(records) - 24 * 5]
-test_records = records.iloc[len(records) - 24 * 5 : ]
+train_records = records.iloc[:  - 24 * 30]
+test_records = records.iloc[- 24 * 36 : ]
 
 def his_mse(his_records):
     

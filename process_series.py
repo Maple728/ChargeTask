@@ -156,6 +156,10 @@ class AdditiveGaussianNoisAutoencoder(object):
     def getBiasses(self):
         return self.sess.run(self.weights['b1'])
 
+
+class LstmAutoEncoder(object):
+    def __init(self, input_size, encode_timesteps, decode_timesteps, hidden_size)
+
 # --------------- Function -------------------
 
 def get_series_time_batch_data(records, batch_sz, time_step, shuffle = True):
