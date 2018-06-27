@@ -10,26 +10,26 @@ import matplotlib.pyplot as plt
 import preprocess
 
 # ----------- Constant -----------
-lr = 0.01
+lr = 0.001
 
 input_size = 1
 output_size = 1
 
 encoder_timestep = 6
-decoder_timestep = 3
+decoder_timestep = 2
 
 series_hidden_size1 = 64
-series_hidden_size2 = 24
+series_hidden_size2 = 32
 series_layer_num = 2
 
 
 batch_size = 24
 
-keep_prob = 0.75
+keep_prob = 0.5
 
 is_train = True
 
-model_path = 'model/model.ckpt'
+model_path = 'model/uber_model.ckpt'
 ae_model_path = 'model/ae_model.ckpt'
 
 # ----------------- Dataset process ----------
@@ -39,7 +39,7 @@ scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
 
 train_records = records.iloc[: -24 * 30]
-test_records = records.iloc[:]
+test_records = records.iloc[ :]
 
 
 # --------------- Function -------------------
@@ -59,6 +59,8 @@ def get_series_time_batch_data(records, batch_sz, time_step, shuffle = True):
         np.random.shuffle(ds)
 
     ds = np.array(ds)
+
+
     i = 0
     while i < len(ds):
         end_i = i + batch_sz
@@ -78,7 +80,11 @@ def get_ae_batch_data(records, batch_sz, encode_timestep, decode_timestep, shuff
 
         ds.append(row)
 
+    if shuffle:
+        np.random.shuffle(ds)
+        
     ds = np.array(ds)
+
     i = 0
     while i < len(ds):
         end_i = i + batch_sz
@@ -93,7 +99,7 @@ def xavier_init(fat_in, fat_out, constant = 1):
     return tf.random_uniform( (fat_in, fat_out), minval = low, maxval = high, dtype = tf.float32)
 
 
-# construct models
+# ---------------- construct models ----------------------
 with tf.variable_scope('Encoder_LSTM'):
     encoder_X = tf.placeholder(tf.float32, shape = [None, encoder_timestep, input_size])
 
@@ -145,25 +151,78 @@ with tf.variable_scope('Inference'):
     
     y_pre1 = tf.nn.tanh( tf.matmul(inference_inputs, inference_fc_w1) + inference_fc_b1 )
     y_pre2 = tf.nn.tanh( tf.matmul(y_pre1, inference_fc_w2) + inference_fc_b2 )
-    y_pre = tf.matmul(y_pre2, inference_fc_w3) + inference_fc_b3
+    inference_y_pre = tf.matmul(y_pre2, inference_fc_w3) + inference_fc_b3
 
-    inference_losses = tf.losses.mean_squared_error(y_pre, Y)
+    inference_losses = tf.losses.mean_squared_error(inference_y_pre, Y)
     inference_train_op = tf.train.AdamOptimizer(lr).minimize(inference_losses)
 
-# --------- train model
-with tf.Session() as sess:
+# session saver
+saver = tf.train.Saver()
 
-    sess.run(tf.global_variables_initializer())
+# --------- train model ------------------------------
+def predict_model(sess = None):
+    # sess process
+    if sess is None:
+        sess = tf.Session()
+        saver.restore(sess, model_path)
     
-    # train ae
-    for i in range(500):
-        ae_batch_data = get_ae_batch_data(train_records, batch_size, encoder_timestep, decoder_timestep)
-        all_loss = []
-        for batch_data in ae_batch_data:
-            loss, _ = sess.run([decoder_losses, decoder_train_op], feed_dict = {encoder_X : batch_data[0], decoder_X : batch_data[1], decoder_Y : batch_data[2]})
-            all_loss.append(loss)
+    # test
+    test_series_batch_data = get_series_time_batch_data(test_records, batch_size, encoder_timestep, shuffle = False)
 
-        print('Epoch', i, 'Loss:', np.mean(all_loss))
+    y_list = []
+    y_pre_list = []
+    all_loss = []
+    for batch_data in test_series_batch_data:
+        loss, pred = sess.run([inference_losses, inference_y_pre], feed_dict = {encoder_X : batch_data[0], Y : batch_data[1]})
+        all_loss.append(loss)
+
+        y_list.extend(batch_data[1])
+        y_pre_list.extend(pred)
+
+    # display
+    x_list = list(range(len(y_list)))
+
+    # inverse normalization
+    y_list = np.array(scaler.inverse_transform(y_list))
+    y_pre_list = np.array(scaler.inverse_transform(y_pre_list))
+
+    rmse = np.sqrt(np.mean( (y_pre_list - y_list) ** 2))
+    print('---------------- Inference Test Loss:', np.mean(all_loss), 'RMSE:', rmse)
+    plt.plot(x_list, y_list, 'r', x_list, y_pre_list, 'b')
+    plt.show()    
+    
+
+def train_model():
+    with tf.Session() as sess:
+
+        sess.run(tf.global_variables_initializer())
         
-    
+        # train ae
+        for i in range(1200):
+            ae_batch_data = get_ae_batch_data(train_records, batch_size, encoder_timestep, decoder_timestep)
+            all_loss = []
+            for batch_data in ae_batch_data:
+                loss, _ = sess.run([decoder_losses, decoder_train_op], feed_dict = {encoder_X : batch_data[0], decoder_X : batch_data[1], decoder_Y : batch_data[2]})
+                all_loss.append(loss)
+
+            print('Encode-Decode train Epoch', i, 'Loss:', np.mean(all_loss))
+
+        # train inference
+        for i in range(3000):
+            series_batch_data = get_series_time_batch_data(train_records, batch_size, encoder_timestep)
+            all_loss = []
+            for batch_data in series_batch_data:
+                loss, _ = sess.run([inference_losses, inference_train_op], feed_dict = {encoder_X : batch_data[0], Y : batch_data[1]})
+                all_loss.append(loss)
+
+            print('Inference train epoch', i, 'Loss:', np.mean(all_loss))
+
+        saver.save(sess, model_path)
+        predict_model(sess)
+
+if is_train:
+    train_model()
+else:
+    predict_model()
+
 

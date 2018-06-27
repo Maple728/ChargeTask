@@ -36,8 +36,8 @@ records = pd.read_csv('data/charge.csv')
 scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
 
-train_records = records.iloc[: -24 * 5]
-test_records = records.iloc[:]
+train_records = records.iloc[: -24 * 30]
+test_records = records.iloc[-24 * 30 :]
 
 
 def xavier_init(fat_in, fat_out, constant = 1):
