@@ -36,8 +36,8 @@ records = pd.read_csv('data/charge.csv')
 # normalization
 scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
-train_records = records.iloc[: -24 * 10]
-test_records = records.iloc[:]
+train_records = records.iloc[24 * 30: ]
+test_records = records.iloc[ : 24 * 30]
 
 class lstm_model():
     def __init__(self, input_size, output_size, hidden_size, layer_num, timesteps, batch_size, keep_prob, name_scope = 'lstm'):

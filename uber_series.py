@@ -16,9 +16,9 @@ input_size = 1
 output_size = 1
 
 encoder_timestep = 24
-decoder_timestep = 3
+decoder_timestep = 6
 
-series_hidden_size1 = 64
+series_hidden_size1 = 128
 series_hidden_size2 = 32
 series_layer_num = 2
 
@@ -27,7 +27,7 @@ batch_size = 100
  
 keep_prob = 0.75
 
-is_train = False
+is_train = True
 
 model_path = 'model/uber_model.ckpt'
 
@@ -37,7 +37,7 @@ records = pd.read_csv('data/charge.csv')
 scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
 
-train_records = records.iloc[: -24 * 30]
+train_records = records.iloc[ : -24 * 30]
 test_records = records.iloc[ -24 * 30 :  ]
 
 
@@ -116,7 +116,7 @@ with tf.variable_scope('Decoder_LSTM'):
     decoder_Y = tf.placeholder(tf.float32, shape = [None, decoder_timestep])
 
     decoder_lstms = [tf.contrib.rnn.BasicLSTMCell(series_hidden_size1), tf.contrib.rnn.BasicLSTMCell(series_hidden_size2)]
-    decoder_dropout = [tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = 1.0, output_keep_prob = keep_prob) for lstm in encoder_lstms]
+    decoder_dropout = [tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = 1.0, output_keep_prob = keep_prob) for lstm in decoder_lstms]
     decoder_cells = tf.contrib.rnn.MultiRNNCell(decoder_dropout, state_is_tuple = True)
 
     decoder_initial_state = encoder_final_state
@@ -199,7 +199,7 @@ def train_model():
         sess.run(tf.global_variables_initializer())
         
         # train ae
-        for i in range(500):
+        for i in range(300):
             ae_batch_data = get_ae_batch_data(train_records, batch_size, encoder_timestep, decoder_timestep)
             all_loss = []
             for batch_data in ae_batch_data:
@@ -209,7 +209,7 @@ def train_model():
             print('Encode-Decode train Epoch', i, 'Loss:', np.mean(all_loss))
 
         # train inference
-        for i in range(1000):
+        for i in range(2000):
             series_batch_data = get_series_time_batch_data(train_records, batch_size, encoder_timestep)
             all_loss = []
             for batch_data in series_batch_data:
@@ -219,13 +219,13 @@ def train_model():
             print('Inference train epoch', i, 'Loss:', np.mean(all_loss))
 
         saver.save(sess, model_path)
-    predict_model(train_records, sess )
-    predict_model(test_records, sess)
+        predict_model(train_records, sess)
+        predict_model(test_records, sess)
 
 if is_train:
     train_model()
 else:
-    predict_model(train_records, display = False)
+    predict_model(train_records, display = True)
     predict_model(test_records)
 
 
