@@ -15,22 +15,21 @@ lr = 0.001
 input_size = 1
 output_size = 1
 
-encoder_timestep = 6
-decoder_timestep = 2
+encoder_timestep = 24
+decoder_timestep = 3
 
 series_hidden_size1 = 64
 series_hidden_size2 = 32
 series_layer_num = 2
 
 
-batch_size = 24
+batch_size = 100
+ 
+keep_prob = 0.75
 
-keep_prob = 0.5
-
-is_train = True
+is_train = False
 
 model_path = 'model/uber_model.ckpt'
-ae_model_path = 'model/ae_model.ckpt'
 
 # ----------------- Dataset process ----------
 records = pd.read_csv('data/charge.csv')
@@ -39,7 +38,7 @@ scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
 
 train_records = records.iloc[: -24 * 30]
-test_records = records.iloc[ :]
+test_records = records.iloc[ -24 * 30 :  ]
 
 
 # --------------- Function -------------------
@@ -160,14 +159,14 @@ with tf.variable_scope('Inference'):
 saver = tf.train.Saver()
 
 # --------- train model ------------------------------
-def predict_model(sess = None):
+def predict_model(target_records, sess = None, display = True):
     # sess process
     if sess is None:
         sess = tf.Session()
         saver.restore(sess, model_path)
     
     # test
-    test_series_batch_data = get_series_time_batch_data(test_records, batch_size, encoder_timestep, shuffle = False)
+    test_series_batch_data = get_series_time_batch_data(target_records, batch_size, encoder_timestep, shuffle = False)
 
     y_list = []
     y_pre_list = []
@@ -188,8 +187,10 @@ def predict_model(sess = None):
 
     rmse = np.sqrt(np.mean( (y_pre_list - y_list) ** 2))
     print('---------------- Inference Test Loss:', np.mean(all_loss), 'RMSE:', rmse)
-    plt.plot(x_list, y_list, 'r', x_list, y_pre_list, 'b')
-    plt.show()    
+    
+    if display:
+        plt.plot(x_list, y_list, 'r', x_list, y_pre_list, 'b')
+        plt.show()    
     
 
 def train_model():
@@ -198,7 +199,7 @@ def train_model():
         sess.run(tf.global_variables_initializer())
         
         # train ae
-        for i in range(1200):
+        for i in range(500):
             ae_batch_data = get_ae_batch_data(train_records, batch_size, encoder_timestep, decoder_timestep)
             all_loss = []
             for batch_data in ae_batch_data:
@@ -208,7 +209,7 @@ def train_model():
             print('Encode-Decode train Epoch', i, 'Loss:', np.mean(all_loss))
 
         # train inference
-        for i in range(3000):
+        for i in range(1000):
             series_batch_data = get_series_time_batch_data(train_records, batch_size, encoder_timestep)
             all_loss = []
             for batch_data in series_batch_data:
@@ -218,11 +219,13 @@ def train_model():
             print('Inference train epoch', i, 'Loss:', np.mean(all_loss))
 
         saver.save(sess, model_path)
-        predict_model(sess)
+    predict_model(train_records, sess )
+    predict_model(test_records, sess)
 
 if is_train:
     train_model()
 else:
-    predict_model()
+    predict_model(train_records, display = False)
+    predict_model(test_records)
 
 
