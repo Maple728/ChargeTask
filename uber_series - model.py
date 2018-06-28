@@ -7,9 +7,9 @@ from tensorflow.contrib import rnn
 
 import matplotlib.pyplot as plt
 
-import preprocess
-
 # ----------- Constant -----------
+dropout_sizes_threhold = 10
+
 input_size = 1
 output_size = 1
 batch_size = 100
@@ -22,6 +22,7 @@ class SeriesConfig:
     decoder_timestep = 6
     input_keep_prob = 0.75
     output_keep_prob = 0.75
+    fc_keep_prob = 0.75
 
 
 
@@ -97,14 +98,20 @@ def xavier_init(fat_in, fat_out, constant = 1):
 
 class UberLSTM():
     def __init__(self, config, scope = 'Uber'):
+        # basic assignment
         self.config = config
         last_hidden_size = config.layer_hidden_sizes[-1]
+
+        # general placeholder
+        self.input_keep_prob = tf.placeholder(tf.float32)
+        self.output_keep_prob = tf.placeholder(tf.float32)
+        self.fc_keep_prob = tf.placeholder(tf.float32)
         # encoder model
         with tf.variable_scope(scope + '_' + 'Encoder'):
             encoder_X = tf.placeholder(tf.float32, shape = [None, config.encoder_timestep, input_size])
             
             encoder_lstms = [tf.contrib.rnn.BasicLSTMCell(hidden_size) for hidden_size in config.layer_hidden_sizes]
-            encoder_dropout = [tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = config.input_keep_prob, output_keep_prob = config.output_keep_prob) for lstm in encoder_lstms]
+            encoder_dropout = [tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = self.input_keep_prob, output_keep_prob = self.output_keep_prob) for lstm in encoder_lstms]
             encoder_cells = tf.contrib.rnn.MultiRNNCell(encoder_dropout, state_is_tuple = True)
 
             encoder_initial_state = encoder_cells.zero_state(batch_size, tf.float32)
@@ -118,7 +125,7 @@ class UberLSTM():
             decoder_Y = tf.placeholder(tf.float32, shape = [None, config.decoder_timestep])
 
             decoder_lstms = [tf.contrib.rnn.BasicLSTMCell(hidden_size) for hidden_size in config.layer_hidden_sizes]
-            decoder_dropout = [tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = config.input_keep_prob, output_keep_prob = config.output_keep_prob) for lstm in decoder_lstms]
+            decoder_dropout = [tf.contrib.rnn.DropoutWrapper(lstm, input_keep_prob = self.input_keep_prob, output_keep_prob = self.output_keep_prob) for lstm in decoder_lstms]
             decoder_cells = tf.contrib.rnn.MultiRNNCell(decoder_dropout, state_is_tuple = True)
 
             decoder_initial_state = encoder_final_state
@@ -136,7 +143,7 @@ class UberLSTM():
 
             decoder_train_op = tf.train.AdamOptimizer(config.lr).minimize(decoder_losses)            
 
-        # inference model
+        # inference model with dropout
         with tf.variable_scope('scope' + '_' + 'Inference'):
             Y = tf.placeholder(tf.float32, shape = [None, output_size])
 
@@ -153,9 +160,9 @@ class UberLSTM():
                 # compute for next loop
                 last_size = size
                 if y_pre is None:
-                    y_pre = tf.nn.tanh( tf.matmul(inference_inputs, inference_fc_w) + inference_fc_b )
+                    y_pre = tf.nn.dropout(tf.nn.tanh( tf.matmul(inference_inputs, inference_fc_w) + inference_fc_b ), self.fc_keep_prob)
                 else:
-                    y_pre = tf.nn.tanh( tf.matmul(y_pre, inference_fc_w) + inference_fc_b )
+                    y_pre = tf.nn.dropout(tf.nn.tanh( tf.matmul(y_pre, inference_fc_w) + inference_fc_b ), self.fc_keep_prob)
                 
             # comput output
             inference_fc_w = tf.Variable(xavier_init(last_size, output_size))
@@ -185,7 +192,10 @@ class UberLSTM():
             ae_batch_data = get_ae_batch_data(records, batch_size, self.config.encoder_timestep, self.config.decoder_timestep)
             all_loss = []
             for batch_data in ae_batch_data:
-                loss, _ = sess.run([self.decoder_losses, self.decoder_train_op], feed_dict = {self.encoder_X : batch_data[0], self.decoder_X : batch_data[1], self.decoder_Y : batch_data[2]})
+                loss, _ = sess.run([self.decoder_losses, self.decoder_train_op], feed_dict = {self.encoder_X : batch_data[0], self.decoder_X : batch_data[1], self.decoder_Y : batch_data[2],
+                                                                                              self.input_keep_prob : self.config.input_keep_prob,
+                                                                                              self.output_keep_prob : self.config.output_keep_prob,
+                                                                                              self.fc_keep_prob = self.config.fc_keep_prob})
                 all_loss.append(loss)
 
             print('Encode-Decode train Epoch', i, 'Loss:', np.mean(all_loss))
@@ -196,7 +206,10 @@ class UberLSTM():
             series_batch_data = get_series_time_batch_data(records, batch_size, self.config.encoder_timestep)
             all_loss = []
             for batch_data in series_batch_data:
-                loss, _ = sess.run([self.inference_losses, self.inference_train_op], feed_dict = {self.encoder_X : batch_data[0], self.Y : batch_data[1]})
+                loss, _ = sess.run([self.inference_losses, self.inference_train_op], feed_dict = {self.encoder_X : batch_data[0], self.Y : batch_data[1],
+                                                                                                  self.input_keep_prob : self.config.input_keep_prob,
+                                                                                                  self.output_keep_prob : self.config.output_keep_prob,
+                                                                                                  self.fc_keep_prob = self.config.fc_keep_prob})
                 all_loss.append(loss)
 
             print('Inference train epoch', i, 'Loss:', np.mean(all_loss))
@@ -209,7 +222,9 @@ class UberLSTM():
         y_pre_list = []
         all_loss = []
         for batch_data in test_series_batch_data:
-            loss, pred = sess.run([self.inference_losses, self.inference_y_pre], feed_dict = {self.encoder_X : batch_data[0], self.Y : batch_data[1]})
+            loss, pred = sess.run([self.inference_losses, self.inference_y_pre], feed_dict = {self.encoder_X : batch_data[0], self.Y : batch_data[1],
+                                                                                              self.input_keep_prob : 1.0,
+                                                                                              self.output_keep_prob : 1.0})
             all_loss.append(loss)
 
             y_list.extend(batch_data[1])
