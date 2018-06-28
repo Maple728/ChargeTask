@@ -19,8 +19,8 @@ class SeriesConfig:
     layer_hidden_sizes = [64, 32]
     inference_layer_sizes = [64, 16]
     encoder_timestep = 24
-    decoder_timestep = 6
-    input_keep_prob = 0.75
+    decoder_timestep = 12
+    input_keep_prob = 1.0
     output_keep_prob = 0.75
     fc_keep_prob = 0.75
 
@@ -36,8 +36,8 @@ records = pd.read_csv('data/charge.csv')
 scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
 
-train_records = records.iloc[24 * 30 :]
-test_records = records.iloc[  : 24 * 30 ]
+train_records = records.iloc[ : -24 * 30]
+test_records = records.iloc[ -24 * 30  : ]
 
 
 # --------------- Function -------------------
@@ -195,7 +195,7 @@ class UberLSTM():
                 loss, _ = sess.run([self.decoder_losses, self.decoder_train_op], feed_dict = {self.encoder_X : batch_data[0], self.decoder_X : batch_data[1], self.decoder_Y : batch_data[2],
                                                                                               self.input_keep_prob : self.config.input_keep_prob,
                                                                                               self.output_keep_prob : self.config.output_keep_prob,
-                                                                                              self.fc_keep_prob = self.config.fc_keep_prob})
+                                                                                              self.fc_keep_prob : self.config.fc_keep_prob})
                 all_loss.append(loss)
 
             print('Encode-Decode train Epoch', i, 'Loss:', np.mean(all_loss))
@@ -209,7 +209,7 @@ class UberLSTM():
                 loss, _ = sess.run([self.inference_losses, self.inference_train_op], feed_dict = {self.encoder_X : batch_data[0], self.Y : batch_data[1],
                                                                                                   self.input_keep_prob : self.config.input_keep_prob,
                                                                                                   self.output_keep_prob : self.config.output_keep_prob,
-                                                                                                  self.fc_keep_prob = self.config.fc_keep_prob})
+                                                                                                  self.fc_keep_prob : self.config.fc_keep_prob})
                 all_loss.append(loss)
 
             print('Inference train epoch', i, 'Loss:', np.mean(all_loss))
@@ -224,7 +224,8 @@ class UberLSTM():
         for batch_data in test_series_batch_data:
             loss, pred = sess.run([self.inference_losses, self.inference_y_pre], feed_dict = {self.encoder_X : batch_data[0], self.Y : batch_data[1],
                                                                                               self.input_keep_prob : 1.0,
-                                                                                              self.output_keep_prob : 1.0})
+                                                                                              self.output_keep_prob : 1.0,
+                                                                                              self.fc_keep_prob : 1.0})
             all_loss.append(loss)
 
             y_list.extend(batch_data[1])
@@ -259,8 +260,15 @@ if is_train:
     sess.run(tf.global_variables_initializer())
     series_model.train_ae(train_records, 300, sess)
     series_model.train_inference(train_records, 500, sess)
-             
+
+    series_model.predict(train_records, sess, True)
+    series_model.predict(test_records, sess, True)
+    # save model
+    saver.save(sess, model_path)
+    
 else:
     saver.restore(sess, model_path)
+    series_model.predict(train_records, sess, True)
+    series_model.predict(test_records, sess, True)    
     
 
