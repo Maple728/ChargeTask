@@ -19,7 +19,7 @@ class SeriesConfig:
     layer_hidden_sizes = [64, 32]
     inference_layer_sizes = [64, 16]
     encoder_timestep = 24
-    decoder_timestep = 12
+    decoder_timestep = 6
     input_keep_prob = 1.0
     output_keep_prob = 0.75
     fc_keep_prob = 0.75
@@ -36,8 +36,8 @@ records = pd.read_csv('data/charge.csv')
 scaler = MinMaxScaler()
 records['power'] = scaler.fit_transform(records['power'])
 
-train_records = records.iloc[ : -24 * 30]
-test_records = records.iloc[ -24 * 30  : ]
+train_records = records.iloc[ 24 * 30 :  ]
+test_records = records.iloc[  : 24 * 30 ]
 
 
 # --------------- Function -------------------
@@ -258,7 +258,7 @@ saver = tf.train.Saver()
 
 if is_train:
     sess.run(tf.global_variables_initializer())
-    series_model.train_ae(train_records, 300, sess)
+    series_model.train_ae(train_records, 200, sess)
     series_model.train_inference(train_records, 500, sess)
 
     series_model.predict(train_records, sess, True)
